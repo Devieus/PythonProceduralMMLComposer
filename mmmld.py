@@ -1,0 +1,317 @@
+"""
+11th iteration:
+Tempo change again.
+	4 times, roughly equal length in time
+	Making it two bars apart, it'll be 7-9-11-13 at tempo of 10
+	Making it four bars apart, it'll be 4-8-12-16 at tempo of 10
+	It has to be even bars apart of course, so stretch could be -6 and stretch2 could be 4, or -3/2.
+Arp volume way up, by 2 (out of 64)
+
+"""
+import random as r
+octaveSign=''
+title="Blank"
+# Take a tempo between 10 and 12.
+tempo=r.randint(10,12)#11-12-13-14 at 11
+# Determine the song length depending on the tempo
+# It should be about 50 at 12
+songLength=int(4*tempo) #in bars, and as a multiple of 4.
+song= {"voice1":[],"voice2":[],"voice3":[],"voice4":[],"leadOctaves":[],"bassOctaves":[],"progressCycle":[]}
+whipeFlag=r.randint(0,1) # either start with only drums, or only without drums, for 16 or so lengths
+#v1 is drums/noise
+drums=["o4g","o6g","r","o4g","o6g"]
+#the rest is just notes
+#notes=["a","a+","b","c","c+","d","d+","e","f","f+","g","g+"]
+notes=["c","d","e","f","g","a","b"]
+#notes=["c","d","f","g","a"]
+# Define chords independent from scale.
+chords=[[0,2,4],[1,3,5],[2,4,6],[0,3,5],[1,4,6],[0,2,5],[1,3,6]]
+# --------------------------------------------------------Drums--------------------------------------------------------
+
+def drumGen():
+    # With L8, it stands to reason there should be 8 total hits.
+    # Time to implement the three part system again.
+    result="o2gr"
+    # go for the 2-4-2
+    credit=8
+    while credit>0:
+        # Guess a next note's length
+        nextLength=r.choice([4,8,16])
+        # If it doesn't fit, guess another
+        while credit-16/nextLength<0:
+            # 4 (quarter) isn't going to fit at this point
+            nextLength=r.choice([8,16])
+        result+=r.choice(drums)+str(nextLength)
+        credit-=16/nextLength
+    result+="o2gr "
+    song["voice1"].append(result) # Add the result to the dict.
+    return result
+    
+
+# --------------------------------------------------------Lead--------------------------------------------------------
+
+# This is a 2D table containing the odds for a markov chain (values need to be cumulative).
+markovChain=[[30,60,90,100], # Half note
+             [30,55,90,100], # Quarter note
+             [30,70,90,100], # Eighth note
+             [30,60,70,100]] # Sixteenth note
+# In order, these are half (2), quarter (4), eighths and sixteenths.
+# If the aim is to reduce the odds of sixteenths, increase the third number.
+import math
+def markov(noteLength,i):
+    noteLength=int(math.log(noteLength,2)-1) # Determine the selector through simple base 2 maths.
+    while True:
+        c=r.randint(0,100) # Roll that die!
+        if c<markovChain[noteLength][0] and i<1: # Check those odds!
+            return 2 # Output that note length!
+        elif c<markovChain[noteLength][1] and i<2:
+            return 4
+        elif c<markovChain[noteLength][2] and i<3:
+            return 8
+        elif c<markovChain[noteLength][3]:
+            return 16
+
+
+# Time to separate the algorithm for precision strikes.
+def algorithm(note):
+    # If the previous note isn't a rest
+    if note != "r":
+        # Maybe make it a rest?
+        if r.randint(1, 7) == 1:
+            return "r"
+        else:
+            # Or don't, at which point do the magic algorithm.
+            return int(r.gauss(0,2.5))+notes.index(note)
+    else:
+        # The last note was a rest, so just grab a random note.
+        return r.randint(0,4)#int((r.gauss(0,1.5))+notes.index(song["voice2"][-2][-1]))
+
+
+leadOctave=4
+note=r.choice(notes)
+result=''
+octave=''
+noteLength=r.choice([2,4,8,16])
+for x in range(songLength):
+    #for y in range(8): #
+    y=16
+    while y>0:
+        i=0
+        noteLength=markov(noteLength,i)
+        #while y+int(16/noteLength)>8:
+        while y-int(16/noteLength)<0:
+            i+=1
+            noteLength=markov(noteLength,i) # no half notes, they clearly don't fit.
+        #y+=int(16/noteLength)
+        y-=int(16/noteLength)
+        # Add the result from the loop, which is admittedly a bit of an unusual place.
+        result+=(octaveSign+note+str(noteLength)) if int(noteLength)!=16 else (octaveSign+note)
+        octave+=str(leadOctave)
+        # Empty the sign, otherwise it might just go crazy.
+        octaveSign=''
+        dnote=algorithm(note) #returns either a rest or an index
+        if dnote != "r":
+            if dnote>5 and leadOctave<5: # Going up an octave.
+                while dnote>=7:
+                    leadOctave+=1
+                    octaveSign+=">"
+                    dnote-=7
+            elif dnote<0 and leadOctave>3: # Going down an octave.
+                while dnote<0:
+                    leadOctave-=1
+                    octaveSign+="<"
+                    dnote+=7
+            else: # It's running out of the octave bounds.
+                dnote=(dnote+7)%7
+            note=notes[dnote] # dnote is sanitized now.
+        else:
+            note=dnote # what is, how you say, type mismatch?
+        # Now for the note length, which can be done by looping again.
+    song["leadOctaves"].append(octave)
+    # Write down the result into the dictionary.
+    song["voice2"].append(result+' ')
+    # Empty the result for recycling.
+    result=""
+    octave=""
+
+
+# --------------------------------------------------------Rhythm------------------------------------------------------
+def progress():
+    # Generate a progression cycle.
+    result=[0]
+    for x in range(3):
+        # Keep it simple, 4 chords, call this routine again to make another.
+        result.append(r.randint(0,len(notes)-1))
+    return result
+
+def arpeggiate(inList):
+    # Fill the song list with all the notes in a cycle over all 4 bars in 4 lists.
+    # inputList looks like [0,x,y,z]
+    for x in inList:
+        # This number x is the index for
+        chord=chords[x]
+        # which consists of three numbers, which themselves are the index for
+        a=[notes[chord[0]],notes[chord[1]],notes[chord[2]]]
+        # which can then be used to make a bar. For now, just a simple arpeggio of 16ths.
+        b=''
+        for y in range(4):
+            # Yea we're doing it this way now
+            b+=a[0]+a[1]+a[2]+a[1]+' '
+        # Great, bar is made, put it in the song directly.
+        song["voice3"].append(b)
+    return
+
+bassOctave=4
+for x in range(songLength):
+    progressCycle=progress()
+    # Place 4 bars.
+    for y in range(tempo):
+        # The song length is tempo*4, so tempo is song length/4
+        arpeggiate(progressCycle)
+    # place the current cycle in the dictionary.
+    song["progressCycle"].append(progressCycle[x%4])
+    if x%tempo==0 and x>0:
+        # Change the progress cycle 4 times.
+        progressCycle=progress()
+    #song["voice3"].append(result) # Add the result to the dict.
+    song["bassOctaves"].append(octave)
+    octaveSign=''
+
+# --------------------------------------------------------Bass--------------------------------------------------------
+
+for y in range(songLength):
+    # Initialize the procedure.
+    credit=8
+    result=''
+    # Start each bar (as it were) with a random note taken from the rhythm track.
+    note=notes[song["progressCycle"][y]]
+    # Make it either half or half dotted.
+    if r.choice([True,False]):
+        note+='.'
+        credit-=4
+    # Add this note for a start
+    result+=note
+    while credit>0:
+        # Guess a next note's length
+        nextLength=r.choice([4,8,16])
+        # If it doesn't fit, guess another
+        while credit-16/nextLength<0:
+            # 4 (quarter) isn't going to fit at this point
+            nextLength=r.choice([8,16])
+        # Add the next note. The next note is up to two notes away, but not itself.
+        flag=True
+        while flag:
+            try:
+                result+=notes[notes.index(result[0])+r.choice([-1,-2,1,2])]+str(nextLength)
+                credit-=16/nextLength
+                flag=False
+            except IndexError:
+                # This is pretty crude, all said. It'll eventually reach a note it can use but it's terrible coding.
+                # Either that or it's genius because there's no need to check the input for every conceivable problem.
+                pass
+    # Add the result to the song.
+    song["voice4"].append(result+' ')
+
+
+# ---------------------------------------------------------Output----------------------------------------------
+stretch=tempo-3
+stretch2=2
+stretch3=stretch
+# At tempo 11, the stretches are 8-10-12-14(=44=11*4)
+# Since x keeps going up, simply setting stretch to those values won't work as x will catch up in 2 bars.
+# Therefore, increase stretch by 2, but also the base to get ahead of x (hence stretch 3).
+output=";[ "+title+" ];\n\n"
+temptempo=tempo+1
+
+output+="CH1Verse_1.s = \"t"+str(tempo)+" \\12 w5 v30 l8 " # Set up basic variables for the drum track.
+riff=drumGen()
+for x in range(songLength):
+    output+=riff # And then add it to the output
+    if x%stretch==0 and x>0: # Add the first three bars again after every so many bars.
+        output+="t" + str(temptempo)
+        temptempo+=1
+        stretch+=stretch3+stretch2
+        stretch3+=stretch2
+        riff=drumGen()
+        for y in range(3):
+            output+=song["voice1"][0]
+
+stretch=tempo-3
+stretch2=2
+stretch3=stretch
+temptempo=tempo+1
+output+="\"\n\nCH2Verse_1.s = \"t"+str(tempo)+" \\6 w3 v50 o4 l16 " # Set up basic variables for the lead track.
+w=3
+for x in range(songLength):
+    output+=song["voice2"][x] # This should be fine as long as x remains an index.
+    if x%stretch==0 and x>0: # Add the first three bars again after every so many bars.
+        output+="t" + str(temptempo)
+        temptempo+=1
+        stretch+=stretch3+stretch2
+        stretch3+=stretch2
+        w=1 if (w+1)%5==0 else (w+1)%5 # Also change the instrument (again).
+        output+="o4w"+str(w) # Set the octave to match the start of the song.
+        for y in range(3):
+            output+=song["voice2"][y]
+        output+="o"+song["leadOctaves"][x][0] if x >= songLength / 2 else "o"+str(int(song["leadOctaves"][x][0])+1)# set the octave back.
+
+stretch=tempo-3
+stretch2=2
+stretch3=stretch
+temptempo=tempo+1
+output+="\"\n\nCH3Verse_1.s = \"t"+str(tempo)+" \\8 w2 v37 o5 l16 " # Set up basic variables for the rhythm track.
+w=3
+for x in range(songLength):
+    output+=song["voice3"][x] # This should be fine as long as x remains an index.
+    if x%stretch==0 and x>0: # Add the first three bars again after every so many bars.
+        output+="t" + str(temptempo)
+        temptempo+=1
+        stretch+=stretch3+stretch2
+        stretch3+=stretch2
+        w=1 if (w+1)%5==0 else (w+1)%5 # Instruments go from 1 to 4.
+        # Technically there's a 0, but that's reserved for the bass and it's the tri wave.
+        output+="o4w"+str(w) # Set the octave to match the start of the song.
+        for y in range(3):
+            output+=song["voice3"][y]
+        output+="o"+song["leadOctaves"][x][0] if x >= songLength / 2 else "o"+str(int(song["leadOctaves"][x][0])+1) # set the octave back.
+
+stretch=tempo-3
+stretch2=2
+stretch3=stretch
+temptempo=tempo+1
+output+="\n\nCH4Verse_1.s = \"t"+str(tempo)+" \\2 w0 v63 o2 l2 " # Set up basic variables for the bass track.
+for x in range(songLength):
+   # Add the track to the song.
+    output+=song["voice4"][x]
+    # Add the first three bars again after every so many bars.
+    if x %stretch == 0 and x>0:
+        output+="t"+str(temptempo)
+        for y in range(3):
+            output+=song["voice4"][y]
+        temptempo+=1
+        stretch+=stretch3+stretch2
+        stretch3+=stretch2
+    if x==songLength/2:
+       output+='>'
+
+
+output+="c1\""
+# This next part is for multiple verses.
+#output+="\n\nChannel_1.s = CH1Verse_1\nChannel_2.s = CH2Verse_1\nChannel_3.s = CH3Verse_1\nChannel_4.s = CH4Verse_1"
+file=open(title+".txt","w")
+file.write(output)
+file.close()
+'''print(song["leadOctaves"])
+print(song["bassOctaves"])'''
+"""
+Macrotune MML sample
+;[ The riddle ];
+
+CH1Verse_1.s = "t12 w5 o1 \4 v40 l8r4"
+CH1Verse_2.s = "o1gg>>g<<ggg>>gr"
+
+CH2Verse_1.s = "t12 w4 o4 \4 v40 l8ef+g4gagf+edd4ef+f+4ef+g4a4gf+ede4edd4b>dc<bage4d4e2r4"
+
+Channel_1.s = CH1Verse_1 + CH1Verse_2 + CH1Verse_2 + CH1Verse_2 + CH1Verse_2 + CH1Verse_2 + CH1Verse_2
+Channel_2.s = CH2Verse_1
+"""
